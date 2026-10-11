@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { ScreenSnapshot } from "@kitlangton/terminal-control";
-import { promptMatches, providerDisabledPrompt, visiblePrompt } from "./prompt";
+import { promptMatches, providerDisabledPrompt, visibleAnswer, visiblePrompt, visibleV1AnswerChoice } from "./prompt";
 
 function screen(lines: string[], outside = "one Xtwo three"): ScreenSnapshot {
   return {
@@ -19,6 +19,99 @@ function screen(lines: string[], outside = "one Xtwo three"): ScreenSnapshot {
     },
   };
 }
+
+describe("pinned-v1 custom answer screen oracle", () => {
+  function answerScreen(text?: string): ScreenSnapshot {
+    const snapshot = screen([]);
+    return {
+      ...snapshot,
+      text: [
+        "hello worldX outside the question",
+        "  ┃",
+        "  ┃  Vimcode E2E question",
+        "  ┃",
+        "  ┃  1. Type your own answer",
+        ...(text === undefined ? [] : [`  ┃     ${text}`]),
+        "  ┃",
+        "  ┃  ↑↓ select  enter submit  esc dismiss",
+        "  ┃",
+      ].join("\n"),
+      frame: { ...snapshot.frame, cursor: null },
+    };
+  }
+
+  it("requires the exact custom-choice screen before Enter opens the editor", () => {
+    const choice = answerScreen();
+    expect(promptMatches(visibleV1AnswerChoice(choice), ["Type your own answer"])).toBe(true);
+    expect(visibleAnswer(choice)).toBeNull();
+    expect(visibleV1AnswerChoice(answerScreen("hello worldX"))).toBeNull();
+    expect(visibleV1AnswerChoice({ ...choice, text: choice.text.replace("enter submit", "enter toggle") })).toBeNull();
+  });
+
+  it("compares the entire editor line and rejects malformed borders or confirmation screens", () => {
+    expect(promptMatches(visibleAnswer(answerScreen("hello worldX")), ["hello worldX"])).toBe(true);
+    expect(promptMatches(visibleAnswer(answerScreen("hello worlXd")), ["hello worldX"])).toBe(false);
+    expect(promptMatches(visibleAnswer(answerScreen("extra hello worldX")), ["hello worldX"])).toBe(false);
+    expect(promptMatches(visibleAnswer(answerScreen("hello  worldX")), ["hello worldX"])).toBe(false);
+    const snapshot = answerScreen("hello worldX");
+    for (const text of [
+      `${snapshot.text}\n  ┃  Vimcode E2E question`,
+      snapshot.text.replace("  ┃     hello", "  x     hello"),
+      snapshot.text.replace("1. Type your own answer", "Review"),
+      snapshot.text.replace("enter submit", "enter confirm"),
+    ])
+      expect(visibleAnswer({ ...snapshot, text })).toBeNull();
+  });
+});
+
+describe("pinned-v2 scalar answer screen oracle", () => {
+  function answerScreen(text: string): ScreenSnapshot {
+    const snapshot = screen([]);
+    return {
+      ...snapshot,
+      text: [
+        "hello worldX outside the form",
+        "  ┃",
+        "  ┃  Vimcode E2E question",
+        "  ┃",
+        "  ┃  Answer  Submit",
+        "  ┃",
+        "  ┃  Answer",
+        "  ┃",
+        `  ┃   ${text}`,
+        "  ┃",
+        "  ┃  ⇆ tab  enter confirm  esc dismiss",
+        "  ┃",
+      ].join("\n"),
+      frame: {
+        ...snapshot.frame,
+        cursor: { x: 18, y: 8, style: "bar", blinking: false, color: { r: 255, g: 255, b: 255 } },
+      },
+    };
+  }
+
+  it("compares the entire answer, not matching timeline text or a suffix", () => {
+    expect(promptMatches(visibleAnswer(answerScreen("hello worldX")), ["hello worldX"])).toBe(true);
+    expect(promptMatches(visibleAnswer(answerScreen("hello worlXd")), ["hello worldX"])).toBe(false);
+    expect(promptMatches(visibleAnswer(answerScreen("extra hello worldX")), ["hello worldX"])).toBe(false);
+    expect(promptMatches(visibleAnswer(answerScreen("hello  worldX")), ["hello worldX"])).toBe(false);
+    expect(visibleAnswer(answerScreen("hello worldX"))?.cursor).toEqual({ x: 12, y: 0, style: "bar" });
+  });
+
+  it("rejects ambiguous titles, missing borders and choice/confirmation screens", () => {
+    const snapshot = answerScreen("hello worldX");
+    for (const text of [
+      `${snapshot.text}\n  ┃  Vimcode E2E question`,
+      snapshot.text.replace("  ┃  Answer  Submit", "  x  Answer  Submit"),
+      snapshot.text.replace("  ┃  Answer\n", "  ┃  Review\n"),
+      snapshot.text.replace("enter confirm", "enter toggle"),
+      snapshot.text.replace("  ┃   hello worldX", "  ┃  hello worldX"),
+      snapshot.text.replace("  ┃\n  ┃   hello", "missing border\n  ┃   hello"),
+    ]) {
+      expect(visibleAnswer({ ...snapshot, text })).toBeNull();
+    }
+  });
+});
 
 describe("pinned-host home prompt screen oracle", () => {
   it("ignores matching text outside the prompt and rejects a matching suffix", () => {

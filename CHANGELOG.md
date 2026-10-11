@@ -12,6 +12,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 - Added separate PR CI guards via `just test-int` for harness integration and `just test-e2e` for cache-installed OpenCode v1/v2 E2E editing, with exact prompt checks and no-plugin controls; local runs remain on demand and outside the unit suite.
 - Added no-argument `just test-e2e` defaults for both pinned hosts, optional single-host selection, fresh temp receipts, private pinned bootstrap, and ignored path-only `.env` binary overrides; existing explicit CI paths remain supported.
+- Added v1/v2 Terminal Control regressions for answer append followed by native paste in one PTY write, with synthetic question setup fixtures and exact visible-answer checks.
+
+### Fixed
+
+- Custom question answers now support Vim editing on both OpenCode v1 and v2, starting in insert mode with isolated mode/undo state and preserving native answer submission, choice navigation and permissions ([#78](https://github.com/oribarilan/vimcode/issues/78)).
+- Native paste in question answers now waits for queued Vim motions, preventing insertion at the previous cursor position.
+- E2E startup failures retain the native exit status and current-scenario host error log instead of only reporting a closed readiness stream.
 
 ## [0.19.1] — 2026-10-04
 

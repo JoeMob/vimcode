@@ -11,7 +11,15 @@ import {
   type TerminalControl,
 } from "@kitlangton/terminal-control";
 import { bounded, closeDriver, type OwnedDriver, ownDriver } from "./driver";
-import { promptMatches, providerDisabledPrompt, type VisiblePrompt, visiblePrompt } from "./prompt";
+import {
+  promptMatches,
+  providerDisabledPrompt,
+  type VisiblePrompt,
+  visibleAnswer,
+  visiblePrompt,
+  visibleV1AnswerChoice,
+} from "./prompt";
+import { v1QuestionBridge } from "./v1-question";
 
 const root = realpathSync(fileURLToPath(new URL("../../", import.meta.url)));
 const configNames = [
@@ -33,6 +41,7 @@ type Receipt = {
   platform: string;
   terminalControl: string;
   driverBinary?: string;
+  questionSetupModules?: Array<{ path: string; sha256: string }>;
   negativeControl: boolean;
   providersDisabled?: boolean;
   providerObservations?: Record<string, string>;
@@ -49,6 +58,7 @@ export type HostRun = {
   driver?: OwnedDriver;
   session?: Session;
   scenario?: string;
+  hostLogOffset?: number;
 };
 
 export function saveReceipt(run: HostRun) {
@@ -171,10 +181,42 @@ export function prepareRun(): HostRun {
     run.receipt.artifact = { tarball, sha256: hash(readFileSync(tarball)) };
     const spec = `vimcode@file:${tarball}`;
     const options = { updateCheck: false, modeIndicator: "none", experimentalV2Leader: "ctrl+x" };
+    let v1Bridge: string | undefined;
+    if (host === "v1" && !run.receipt.negativeControl) {
+      const bridge = v1QuestionBridge(readFileSync(actualBinary));
+      v1Bridge = join(run.output, "v1-question-bridge.ts");
+      writeFileSync(v1Bridge, bridge.source);
+      run.receipt.questionSetupModules = bridge.modules;
+      // The plain setup fixture has no npm imports; bound v1's optional config
+      // dependency install so an unavailable registry cannot stall startup.
+      writeFileSync(join(run.output, "config/opencode/.npmrc"), "fetch-retries=0\nfetch-timeout=1000\n");
+      writeFileSync(
+        join(run.output, "config/opencode/opencode.json"),
+        JSON.stringify({
+          autoupdate: false,
+          enabled_providers: [],
+          plugin: [[join(root, "test/e2e/fixture/v1-server.ts"), { v1Bridge }]],
+        }),
+      );
+    }
     const config =
       host === "v1"
-        ? { plugin: run.receipt.negativeControl ? [] : [[spec, options]], keybinds: { leader: "ctrl+x" } }
-        : { plugins: run.receipt.negativeControl ? [] : [{ package: spec, options }], keybinds: { leader: "ctrl+x" } };
+        ? {
+            plugin: run.receipt.negativeControl
+              ? []
+              : [
+                  [spec, options],
+                  [join(root, "test/e2e/fixture/tui.ts"), { directory: join(run.output, "sandbox"), v1Bridge }],
+                ],
+            keybinds: { leader: "ctrl+x" },
+          }
+        : {
+            plugins: [
+              ...(run.receipt.negativeControl ? [] : [{ package: spec, options }]),
+              { package: join(root, "test/e2e/fixture"), options: { directory: join(run.output, "sandbox") } },
+            ],
+            keybinds: { leader: "ctrl+x" },
+          };
     writeFileSync(join(run.output, `config/opencode/${host === "v1" ? "tui" : "cli"}.json`), JSON.stringify(config));
     saveReceipt(run);
     return run;
@@ -220,6 +262,8 @@ export async function startScenario(run: HostRun, name: string) {
   if (run.driver) throw new Error("Previous owned driver has not been reaped; refusing another launch");
   run.scenario = name;
   mkdirSync(join(run.output, name));
+  const hostLog = join(run.env.XDG_DATA_HOME ?? run.output, "opencode/log/opencode.log");
+  run.hostLogOffset = existsSync(hostLog) ? statSync(hostLog).size : 0;
   // The driver also gets no provider credentials; launch independently rejects inheritance.
   const driverEnv = Object.fromEntries(Object.keys(process.env).map((key) => [key, undefined]));
   Object.assign(driverEnv, run.env);
@@ -237,7 +281,10 @@ export async function startScenario(run: HostRun, name: string) {
       host: "opentui",
       viewport: { cols: 110, rows: 34 },
       inheritEnv: false,
-      env: run.env,
+      env: {
+        ...run.env,
+        ...(run.receipt.host === "v2" ? { OPENCODE_LOG_LEVEL: "error" } : {}),
+      },
       record: "on-failure",
     }),
     "host launch",
@@ -318,13 +365,35 @@ export async function pressKey(run: HostRun, key: Key, timeoutMs = 5_000) {
   await bounded(sessionFor(run).keyboard.press(key), "keyboard press", timeoutMs);
 }
 
-export async function checkpoint(run: HostRun, name: string, lines: string[], cursor?: { x: number; y: number }) {
+export async function writeInput(run: HostRun, text: string, timeoutMs = 5_000) {
+  await bounded(sessionFor(run).keyboard.write(new TextEncoder().encode(text)), "keyboard raw write", timeoutMs);
+}
+
+export async function openQuestion(run: HostRun) {
+  await pressKey(run, "Control+G");
+  if (run.receipt.host === "v1") {
+    await checkpoint(run, "answer-choice", ["Type your own answer"], undefined, visibleV1AnswerChoice);
+    await pressKey(run, "Enter");
+  }
+}
+
+export async function answerCheckpoint(run: HostRun, name: string, text: string) {
+  await checkpoint(run, name, [text], undefined, visibleAnswer);
+}
+
+export async function checkpoint(
+  run: HostRun,
+  name: string,
+  lines: string[],
+  cursor?: { x: number; y: number },
+  readPrompt = visiblePrompt,
+) {
   let actual: VisiblePrompt | null = null;
   try {
     const capture = await waitVisible(
       run,
       (snapshot) => {
-        actual = visiblePrompt(snapshot);
+        actual = readPrompt(snapshot);
         return promptMatches(actual, lines, cursor);
       },
       5_000,
@@ -356,9 +425,29 @@ export async function saveFailure(run: HostRun, error: unknown) {
       writeFileSync(join(directory, "failure.txt"), capture.text);
       writeFileSync(join(directory, "failure.json"), JSON.stringify(capture, null, 2));
       await bounded(run.session.saveRecording(join(directory, "failure.termctrl")), "failure recording");
+      if (capture.reason === "exited" || capture.reason === "outputclosed") {
+        const { state, exit } = await bounded(run.session.status(), "failure exit status");
+        writeFileSync(join(directory, "failure-status.json"), JSON.stringify({ state, exit }, null, 2));
+      }
     } catch (captureError) {
       run.receipt.checks.push({ name: "failure-evidence", status: "fail", error: String(captureError) });
     }
+  }
+  try {
+    const hostLog = join(run.env.XDG_DATA_HOME ?? run.output, "opencode/log/opencode.log");
+    if (existsSync(hostLog)) {
+      const log = readFileSync(hostLog);
+      const offset = (run.hostLogOffset ?? 0) <= log.length ? (run.hostLogOffset ?? 0) : 0;
+      const errors = log
+        .subarray(offset)
+        .toString()
+        .split("\n")
+        .filter((line) => /level=(?:ERROR|FATAL)|"level":"(?:error|fatal)"/.test(line));
+      if (errors.length)
+        writeFileSync(join(run.output, run.scenario ?? "", "host-error.log"), `${errors.join("\n")}\n`);
+    }
+  } catch (logError) {
+    run.receipt.checks.push({ name: "failure-evidence", status: "fail", error: String(logError) });
   }
   saveReceipt(run);
 }

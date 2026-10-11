@@ -1,5 +1,16 @@
 import { beforeAll, describe, it } from "bun:test";
-import { checkpoint, type HostRun, prepareRun, pressKey, scenario, typeText, verifyInstalledArtifact } from "./host";
+import {
+  answerCheckpoint,
+  checkpoint,
+  type HostRun,
+  openQuestion,
+  prepareRun,
+  pressKey,
+  scenario,
+  typeText,
+  verifyInstalledArtifact,
+  writeInput,
+} from "./host";
 
 const negativeControl = process.env.VIMCODE_E2E_NO_PLUGIN === "1";
 // Leave time for bounded sends/captures and finally cleanup before Bun's outer timeout.
@@ -61,6 +72,29 @@ describe("Terminal Control / cache-installed OpenCode", () => {
         await checkpoint(run, "quote-empty", ['say "" now']);
         await typeText(run, "new");
         await checkpoint(run, "quote-result", ['say "new" now']);
+      });
+    },
+    scenarioTimeoutMs,
+  );
+
+  it.skipIf(negativeControl)(
+    "native paste waits for queued append in a question answer",
+    async () => {
+      await scenario(run, "answer-paste", async () => {
+        verifyInstalledArtifact(run);
+        await openQuestion(run);
+        await answerCheckpoint(
+          run,
+          "answer-ready",
+          run.receipt.host === "v1" ? "Type your own answer" : "Type your answer",
+        );
+        await typeText(run, "hello world");
+        await answerCheckpoint(run, "answer-insert", "hello world");
+        await pressKey(run, "Escape");
+        await answerCheckpoint(run, "answer-normal", "hello world");
+        // One PTY write: no timer turn separates append from native bracketed paste.
+        await writeInput(run, "a\x1b[200~X\x1b[201~");
+        await answerCheckpoint(run, "answer-paste-result", "hello worldX");
       });
     },
     scenarioTimeoutMs,

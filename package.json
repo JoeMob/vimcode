@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "test": "bun test",
-    "test:int": "bun --env-file=/dev/null test ./test/e2e/prompt.unit.ts ./test/e2e/driver.integration.ts ./test/e2e/launcher.integration.ts",
+    "test:int": "bun --env-file=/dev/null test ./test/e2e/prompt.unit.ts ./test/e2e/v1-question.unit.ts ./test/e2e/driver.integration.ts ./test/e2e/launcher.integration.ts",
     "test:e2e": "bun --env-file=/dev/null scripts/test-e2e.ts",
     "typecheck": "tsc --noEmit",
     "check": "biome check .",
