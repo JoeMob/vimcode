@@ -8,6 +8,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+## [0.19.2] — 2026-10-14
+
 ### Added
 
 - Added separate PR CI guards via `just test-int` for harness integration and `just test-e2e` for cache-installed OpenCode v1/v2 E2E editing, with exact prompt checks and no-plugin controls; local runs remain on demand and outside the unit suite.
@@ -393,7 +395,8 @@ First release. Modal editing for the OpenCode prompt.
 
 > `g` fires immediately as buffer-home instead of waiting for `gg`. The `yy` line tracker drifts on clicks and arrow keys. Visual mode and text objects aren't feasible without cursor position access.
 
-[Unreleased]: https://github.com/oribarilan/vimcode/compare/v0.19.1...HEAD
+[Unreleased]: https://github.com/oribarilan/vimcode/compare/v0.19.2...HEAD
+[0.19.2]: https://github.com/oribarilan/vimcode/compare/v0.19.1...v0.19.2
 [0.19.1]: https://github.com/oribarilan/vimcode/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/oribarilan/vimcode/compare/v0.18.1...v0.19.0
 [0.18.1]: https://github.com/oribarilan/vimcode/compare/v0.18.0...v0.18.1
