@@ -65,7 +65,7 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Add your change
 
 ## Host support policy
 
-OpenCode v2 support is rolling out gradually and remains experimental in vimcode v0.19.1. Future maintenance will move to v2 only; v1 compatibility remains in this release. The recommended v1 pin stays at `v0.18.1`. Do not automatically advance that legacy recommendation when preparing a v2-focused release.
+OpenCode v2 support is rolling out gradually and remains experimental in vimcode v0.19.2. Future maintenance will move to v2 only; v1 compatibility remains in this release. The recommended v1 pin stays at `v0.18.1`. Do not automatically advance that legacy recommendation when preparing a v2-focused release.
 
 ## Release process
 
@@ -88,19 +88,19 @@ Releases are manual.
 
 Both host versions load the same `./tui` package entry via a Git URL. Pin a tag or commit so upgrades use a new cache entry.
 
-On OpenCode **v1**, use `tui.json`. The recommended legacy pin is `v0.18.1`; `v0.19.1` includes v1 compatibility and the subagent-navigation fix for users who opt in:
+On OpenCode **v1**, use `tui.json`. The recommended legacy pin is `v0.18.1`; `v0.19.2` includes v1 compatibility plus the subagent-navigation and question-answer fixes for users who opt in:
 
 ```json
 { "plugin": ["vimcode@git+https://github.com/oribarilan/vimcode.git#v0.18.1"] }
 ```
 
-On OpenCode **v2**, use `cli.json` and pin `v0.19.1`. v2 support is experimental; the v1-only `v0.18.1` release does not work on v2:
+On OpenCode **v2**, use `cli.json` and pin `v0.19.2`. v2 support is experimental; the v1-only `v0.18.1` release does not work on v2:
 
 ```json
 {
   "plugins": [
     {
-      "package": "vimcode@git+https://github.com/oribarilan/vimcode.git#v0.19.1"
+      "package": "vimcode@git+https://github.com/oribarilan/vimcode.git#v0.19.2"
     }
   ]
 }
