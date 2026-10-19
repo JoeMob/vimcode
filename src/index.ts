@@ -451,7 +451,7 @@ const plugin = {
         return;
       if (state.disabled) {
         if (answerOwnsFocus() || (!hasAnswerFocus(api.renderer) && !mainPromptBlocked())) {
-          editor.cursorStyle = { style: "line", blinking: true };
+          editor.cursorStyle = { style: "line", blinking: false };
         }
         return;
       }
@@ -461,7 +461,7 @@ const plugin = {
       showContext(context);
       editor.cursorStyle = {
         style: context.state.mode === "insert" ? "line" : "block",
-        blinking: true,
+        blinking: false,
       };
     }
 
